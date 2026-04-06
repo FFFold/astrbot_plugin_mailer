@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from email.message import EmailMessage
+from typing import Any
 
 import aiosmtplib
 
@@ -34,9 +35,24 @@ async def send_message(
         start_tls=settings.use_starttls,
     )
     status_code, status_message = response
-    decoded = (
-        status_message.decode("utf-8", errors="replace")
-        if isinstance(status_message, bytes)
-        else str(status_message)
-    )
-    return str(status_code), decoded
+    return str(status_code), _normalize_status_message(status_message)
+
+
+def _normalize_status_message(status_message: Any) -> str:
+    if isinstance(status_message, bytes):
+        return status_message.decode("utf-8", errors="replace").strip()
+
+    message_attr = getattr(status_message, "message", None)
+    if isinstance(message_attr, bytes):
+        return message_attr.decode("utf-8", errors="replace").strip()
+    if isinstance(message_attr, str):
+        return message_attr.strip()
+
+    if isinstance(status_message, (list, tuple)):
+        parts = [_normalize_status_message(item) for item in status_message]
+        return "; ".join(part for part in parts if part)
+
+    text = str(status_message).strip()
+    if text == "{}":
+        return ""
+    return text

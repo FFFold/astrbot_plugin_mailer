@@ -11,16 +11,18 @@
 - 收件人域名白名单/黑名单限制
 - 调用者 ID 白名单限制
 - 附件目录沙箱限制
+- 可选的任意附件路径放行开关（高风险）
 
 ## 功能概览
 
 - 向 AstrBot 注册一个 LLM 工具：`send_email`
 - 通过 SMTP 发送邮件，支持 TLS 和 STARTTLS
 - 自动构造适合文本、HTML、内嵌图片、附件的 MIME 邮件结构
+- 优先引导 LLM 使用 `html_body` 生成富文本邮件
 - 通过 `allowed_sender_ids` 限制哪些用户可触发发信
 - 通过 `allowed_domains` / `blocked_domains` 限制收件人域名
 - 通过 `allowed_attachment_roots` 限制附件来源目录
-- 提供 `/mail_test` 和 `/mail_config_check` 用于人工验证
+- 提供仅管理员可用的 `/mail_test` 和 `/mail_config_check` 用于人工验证
 
 ## 目录结构
 
@@ -78,6 +80,7 @@ AstrBot 会根据 `requirements.txt` 安装运行时依赖：
 - `allowed_domains`：允许发送的收件人域名白名单，空表示不限制
 - `blocked_domains`：禁止发送的收件人域名黑名单
 - `allowed_attachment_roots`：允许作为附件和内嵌图片来源的绝对目录列表
+- `allow_unsafe_all_attachment_paths`：是否允许任意本地附件路径，默认关闭
 - `max_attachment_size_mb`：单个文件大小上限，单位 MB
 - `max_total_attachment_size_mb`：所有附件与内嵌图片总大小上限，单位 MB
 - `max_html_length`：HTML 正文最大长度
@@ -106,11 +109,21 @@ data/plugin_data/astrbot_plugin_mailer/attachments/report.pdf
 
 如果传入绝对路径，则必须位于 `allowed_attachment_roots` 配置的目录之一中，否则会被拒绝。
 
+如果你开启 `security.allow_unsafe_all_attachment_paths=true`，则会跳过目录沙箱，允许读取任意本地路径。
+
+这是一个高风险选项，意味着 LLM 可能读取并外发服务器上的任意可访问文件。除非运行环境完全可信且你明确知道后果，否则不要开启。
+
 ## LLM 工具说明
 
 插件目前注册一个工具：
 
 ### `send_email`
+
+工具设计上更鼓励生成富文本邮件：
+
+- 如果用户没有明确要求纯文本，优先填写 `html_body`
+- 如果邮件里需要展示图片，优先使用 `html_body + inline_images`
+- `text_body` 更适合做纯文本兜底，或用于用户明确要求 plain text 的场景
 
 建议的调用参数如下：
 
@@ -144,7 +157,8 @@ data/plugin_data/astrbot_plugin_mailer/attachments/report.pdf
 - `subject` 必填
 - `text_body` 和 `html_body` 至少提供一个
 - 使用 `inline_images` 时必须提供 `html_body`
-- 所有附件和内嵌图片路径都必须通过目录沙箱检查
+- 默认情况下，所有附件和内嵌图片路径都必须通过目录沙箱检查
+- 只有在显式开启 `allow_unsafe_all_attachment_paths` 时，才允许读取任意本地路径
 
 ## 手动命令
 
@@ -152,9 +166,13 @@ data/plugin_data/astrbot_plugin_mailer/attachments/report.pdf
 
 检查当前插件 SMTP 配置是否完整，并输出关键运行信息。
 
+默认仅管理员可用。
+
 ### `/mail_test recipient@example.com`
 
 发送一封简单测试邮件，用于验证 SMTP 配置和发信链路。
+
+默认仅管理员可用。
 
 ## 安全建议
 
@@ -163,6 +181,7 @@ data/plugin_data/astrbot_plugin_mailer/attachments/report.pdf
 - 设置 `security.allowed_sender_ids`
 - 设置 `security.allowed_domains`
 - 将 `security.allowed_attachment_roots` 控制在尽可能小的范围内
+- 保持 `security.allow_unsafe_all_attachment_paths=false`
 - 使用邮箱授权码，不要直接使用主账号密码
 - 如果不希望模型自主发信，可将 `tool.require_tool_confirmation` 设为 `true`
 
@@ -193,7 +212,7 @@ uv pip install pytest pytest-asyncio aiosmtplib "pydantic>=2.12.5" "jsonschema>=
 当前通过结果：
 
 ```text
-11 passed
+17 passed
 ```
 
 ## 开发说明
@@ -210,4 +229,4 @@ uv pip install pytest pytest-asyncio aiosmtplib "pydantic>=2.12.5" "jsonschema>=
 1. 增加“发送前确认”工作流
 2. 在 `data/plugin_data` 下记录发信审计日志
 3. 提供更友好的 HTML 模板辅助能力
-4. 增加针对真实 `send_email_tool()` 异步发送路径的 mock 测试
+4. 增加针对真实 AstrBot 运行环境的联调验证

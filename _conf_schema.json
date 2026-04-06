@@ -114,6 +114,12 @@
         "hint": "填写绝对路径列表。为空时仅允许 plugin_data/astrbot_plugin_mailer/attachments 目录。",
         "default": []
       },
+      "allow_unsafe_all_attachment_paths": {
+        "type": "bool",
+        "description": "允许任意附件路径",
+        "hint": "高风险选项，默认关闭。开启后将允许读取任意本地文件路径，LLM 可能借此访问并外发服务器上的敏感文件，请仅在完全可信的受控环境中使用。",
+        "default": false
+      },
       "max_attachment_size_mb": {
         "type": "int",
         "description": "单文件大小上限（MB）",

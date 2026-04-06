@@ -111,6 +111,7 @@ def build_plugin(tmp_path: Path, **overrides) -> MailerPlugin:
             "allowed_domains": [],
             "blocked_domains": [],
             "allowed_attachment_roots": [str(tmp_path.resolve())],
+            "allow_unsafe_all_attachment_paths": False,
             "max_attachment_size_mb": 2,
             "max_total_attachment_size_mb": 4,
             "max_html_length": 10000,
@@ -176,6 +177,26 @@ def test_file_limits_reject_paths_outside_allowed_roots(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="不在允许的附件目录内"):
         plugin._check_file_limits(request)
+
+
+def test_file_limits_allow_any_path_when_unsafe_switch_enabled(tmp_path: Path) -> None:
+    plugin = build_plugin(
+        tmp_path,
+        security={"allow_unsafe_all_attachment_paths": True},
+    )
+    outside = tmp_path.parent / "outside-unsafe.txt"
+    outside.write_text("payload", encoding="utf-8")
+    request = MailRequest.from_payload(
+        {
+            "to": ["alice@example.com"],
+            "subject": "Unsafe allowed",
+            "text_body": "Hello",
+            "attachments": [{"path": str(outside)}],
+        }
+    )
+
+    plugin._check_file_limits(request)
+    assert request.attachments[0].path == outside.resolve()
 
 
 def test_sender_allowlist_blocks_unknown_sender(tmp_path: Path) -> None:
@@ -246,3 +267,11 @@ def test_tool_handler_works_after_star_manager_partial_binding(tmp_path: Path) -
     assert result == "ok"
     assert captured["event"] is event
     assert captured["payload"] == payload
+
+
+def test_tool_description_encourages_html_email(tmp_path: Path) -> None:
+    plugin = build_plugin(tmp_path)
+    tool = plugin._build_send_email_tool()
+
+    assert "优先使用 html_body" in tool.description
+    assert "inline_images" in tool.description

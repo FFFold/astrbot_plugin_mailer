@@ -42,7 +42,8 @@ class MailerPlugin(Star):
             name="send_email",
             description=(
                 "在用户明确要求发送邮件时，通过受控 SMTP 通道发送邮件。"
-                "必须具备清晰的收件人、主题和正文。"
+                "优先使用 html_body 生成结构化富文本邮件；仅在用户明确要求纯文本或没有富文本内容时使用 text_body。"
+                "如果包含图片，优先使用 html_body 配合 inline_images。必须具备清晰的收件人、主题和正文。"
             ),
             parameters={
                 "type": "object",
@@ -215,12 +216,16 @@ class MailerPlugin(Star):
         return deduped
 
     def _resolve_safe_path(self, raw_path: Path) -> Path:
+        security_cfg = self._security_config()
         path = raw_path
         if not path.is_absolute():
             path = self.attachments_dir / path
         resolved = path.resolve()
         if not resolved.is_file():
             raise ValueError(f"文件不存在: {resolved}")
+
+        if bool(security_cfg.get("allow_unsafe_all_attachment_paths", False)):
+            return resolved
 
         for root in self._allowed_roots():
             try:
@@ -283,9 +288,13 @@ class MailerPlugin(Star):
             recipients=request.all_recipients,
         )
 
+        status_segment = f" SMTP 状态: {status_code}"
+        if status_message:
+            status_segment += f" {status_message}"
+
         return (
             "邮件发送成功。"
-            f" SMTP 状态: {status_code} {status_message}。"
+            f"{status_segment}。"
             f" 收件人: {', '.join(request.to)}。"
             f" 主题: {message['Subject']}"
         )
