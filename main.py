@@ -21,12 +21,45 @@ class MailerPlugin(Star):
         self.attachments_dir = self.data_dir / "attachments"
         self.attachments_dir.mkdir(parents=True, exist_ok=True)
 
-        if self._tool_config().get("enable_llm_tool", True):
+        if self._get_bool("tool", "enable_llm_tool", True):
             self.context.add_llm_tools(self._build_send_email_tool())
 
     def _group(self, name: str) -> dict[str, Any]:
         value = self.config.get(name, {})
         return value if isinstance(value, dict) else {}
+
+    def _get_bool(self, group_name: str, key: str, default: bool) -> bool:
+        group = self._group(group_name)
+        value = group.get(key, default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "off", ""}:
+                return False
+        if isinstance(value, (int, float)) and value in {0, 1}:
+            return bool(value)
+        raise ValueError(f"{group_name}.{key} 必须是布尔值。")
+
+    def _get_list_of_strings(
+        self, group_name: str, key: str, default: list[str] | None = None
+    ) -> list[str]:
+        group = self._group(group_name)
+        value = group.get(key, default or [])
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError(f"{group_name}.{key} 必须是字符串列表。")
+        normalized: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError(f"{group_name}.{key} 只能包含字符串。")
+            text = item.strip()
+            if text:
+                normalized.append(text)
+        return normalized
 
     def _smtp_config(self) -> dict[str, Any]:
         return self._group("smtp")
@@ -149,8 +182,8 @@ class MailerPlugin(Star):
         username = str(smtp_cfg.get("username", "")).strip()
         password = str(smtp_cfg.get("password", "")).strip()
         from_email = str(smtp_cfg.get("from_email", "")).strip()
-        use_tls = bool(smtp_cfg.get("use_tls", True))
-        use_starttls = bool(smtp_cfg.get("use_starttls", False))
+        use_tls = self._get_bool("smtp", "use_tls", True)
+        use_starttls = self._get_bool("smtp", "use_starttls", False)
         timeout_seconds = float(smtp_cfg.get("timeout_seconds", 30))
         port = int(smtp_cfg.get("port", 465))
 
@@ -182,12 +215,9 @@ class MailerPlugin(Star):
         )
 
     def _check_sender_allowed(self, event: AstrMessageEvent) -> None:
-        security_cfg = self._security_config()
-        allowed_sender_ids = [
-            str(item).strip()
-            for item in security_cfg.get("allowed_sender_ids", [])
-            if str(item).strip()
-        ]
+        allowed_sender_ids = self._get_list_of_strings(
+            "security", "allowed_sender_ids", []
+        )
         if allowed_sender_ids and str(event.get_sender_id()) not in allowed_sender_ids:
             raise PermissionError("当前发送者没有权限使用邮件发送功能。")
 
@@ -195,16 +225,13 @@ class MailerPlugin(Star):
         return address.rsplit("@", 1)[-1].lower()
 
     def _check_recipient_policy(self, request: MailRequest) -> None:
-        security_cfg = self._security_config()
         allowed_domains = {
-            str(item).strip().lower()
-            for item in security_cfg.get("allowed_domains", [])
-            if str(item).strip()
+            item.lower()
+            for item in self._get_list_of_strings("security", "allowed_domains", [])
         }
         blocked_domains = {
-            str(item).strip().lower()
-            for item in security_cfg.get("blocked_domains", [])
-            if str(item).strip()
+            item.lower()
+            for item in self._get_list_of_strings("security", "blocked_domains", [])
         }
 
         for recipient in request.all_recipients:
@@ -215,11 +242,11 @@ class MailerPlugin(Star):
                 raise ValueError(f"收件人域名不在白名单中: {domain}")
 
     def _allowed_roots(self) -> list[Path]:
-        security_cfg = self._security_config()
         roots = [self.attachments_dir.resolve()]
-        for entry in security_cfg.get("allowed_attachment_roots", []):
-            if isinstance(entry, str) and entry.strip():
-                roots.append(Path(entry).expanduser().resolve())
+        for entry in self._get_list_of_strings(
+            "security", "allowed_attachment_roots", []
+        ):
+            roots.append(Path(entry).expanduser().resolve())
         deduped: list[Path] = []
         for root in roots:
             if root not in deduped:
@@ -235,7 +262,7 @@ class MailerPlugin(Star):
         if not resolved.is_file():
             raise ValueError(f"文件不存在: {resolved}")
 
-        if bool(security_cfg.get("allow_unsafe_all_attachment_paths", False)):
+        if self._get_bool("security", "allow_unsafe_all_attachment_paths", False):
             return resolved
 
         for root in self._allowed_roots():
@@ -254,6 +281,14 @@ class MailerPlugin(Star):
         max_total_size = (
             int(security_cfg.get("max_total_attachment_size_mb", 25)) * 1024 * 1024
         )
+        if max_attachment_size <= 0:
+            raise ValueError("security.max_attachment_size_mb 必须大于 0。")
+        if max_total_size <= 0:
+            raise ValueError("security.max_total_attachment_size_mb 必须大于 0。")
+        if max_total_size < max_attachment_size:
+            raise ValueError(
+                "security.max_total_attachment_size_mb 不能小于 max_attachment_size_mb。"
+            )
 
         total_size = 0
         for file_ref in [*request.attachments, *request.inline_images]:
@@ -313,7 +348,7 @@ class MailerPlugin(Star):
     async def send_email_tool(self, event: AstrMessageEvent, **payload: Any) -> str:
         logger.info("mailer tool invoked by %s", event.get_sender_id())
         self._check_sender_allowed(event)
-        if self._tool_config().get("require_tool_confirmation", False):
+        if self._get_bool("tool", "require_tool_confirmation", False):
             raise PermissionError(
                 "当前已开启工具确认，不能直接发送邮件，请改为人工确认后再发送。"
             )
@@ -361,11 +396,11 @@ class MailerPlugin(Star):
             self._check_sender_allowed(event)
             settings = self._smtp_settings()
             from_email = str(self._smtp_config().get("from_email", "")).strip()
-            roots = ", ".join(str(path) for path in self._allowed_roots())
+            allowed_root_count = len(self._allowed_roots())
             yield event.plain_result(
                 "邮件插件配置校验通过。"
-                f" SMTP: {settings.host}:{settings.port}，发件人: {from_email}，允许目录数量: {len(self._allowed_roots())}，"
-                f" 任意路径开关: {'开启' if self._security_config().get('allow_unsafe_all_attachment_paths', False) else '关闭'}"
+                f" SMTP: {settings.host}:{settings.port}，发件人: {from_email}，允许目录数量: {allowed_root_count}，"
+                f" 任意路径开关: {'开启' if self._get_bool('security', 'allow_unsafe_all_attachment_paths', False) else '关闭'}"
             )
         except Exception as exc:
             yield event.plain_result(f"邮件插件配置无效: {exc}")

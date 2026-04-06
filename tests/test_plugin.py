@@ -126,6 +126,14 @@ class DummyContext:
         self.tools.extend(tools)
 
 
+def run_async(awaitable):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(awaitable)
+    finally:
+        loop.close()
+
+
 def build_plugin(mailer_plugin_cls, tmp_path: Path, **overrides):
     config = {
         "smtp": {
@@ -286,6 +294,60 @@ def test_smtp_settings_reject_invalid_port(tmp_path: Path, MailerPlugin) -> None
         plugin._smtp_settings()
 
 
+def test_smtp_settings_parse_string_bool_values(tmp_path: Path, MailerPlugin) -> None:
+    plugin = build_plugin(
+        MailerPlugin,
+        tmp_path,
+        smtp={"use_tls": "false", "use_starttls": "true"},
+        tool={"enable_llm_tool": "true", "require_tool_confirmation": "false"},
+        security={"allow_unsafe_all_attachment_paths": "false"},
+    )
+
+    settings = plugin._smtp_settings()
+
+    assert settings.use_tls is False
+    assert settings.use_starttls is True
+    assert plugin._get_bool("tool", "enable_llm_tool", True) is True
+    assert plugin._get_bool("tool", "require_tool_confirmation", True) is False
+    assert (
+        plugin._get_bool("security", "allow_unsafe_all_attachment_paths", True) is False
+    )
+
+
+def test_security_lists_reject_string_values(tmp_path: Path, MailerPlugin) -> None:
+    plugin = build_plugin(
+        MailerPlugin, tmp_path, security={"allowed_domains": "example.com"}
+    )
+
+    with pytest.raises(ValueError, match="必须是字符串列表"):
+        plugin._check_recipient_policy(
+            SimpleNamespace(all_recipients=["alice@example.com"])
+        )
+
+
+def test_file_limits_reject_non_positive_size_limits(
+    tmp_path: Path, MailerPlugin, MailRequest
+) -> None:
+    plugin = build_plugin(
+        MailerPlugin,
+        tmp_path,
+        security={"max_attachment_size_mb": 0},
+    )
+    attachment = tmp_path / "safe.txt"
+    attachment.write_text("payload", encoding="utf-8")
+    request = MailRequest.from_payload(
+        {
+            "to": ["alice@example.com"],
+            "subject": "Safe",
+            "text_body": "Hello",
+            "attachments": [{"path": str(attachment)}],
+        }
+    )
+
+    with pytest.raises(ValueError, match="必须大于 0"):
+        plugin._check_file_limits(request)
+
+
 def test_tool_handler_accepts_runtime_payload_dict(
     tmp_path: Path, MailerPlugin
 ) -> None:
@@ -305,7 +367,7 @@ def test_tool_handler_accepts_runtime_payload_dict(
         "text_body": "Hello",
     }
 
-    result = asyncio.run(plugin._send_email_tool_handler(event, payload))
+    result = run_async(plugin._send_email_tool_handler(event, payload))
 
     assert result == "ok"
     assert captured["event"] is event
@@ -332,7 +394,7 @@ def test_tool_handler_works_after_star_manager_partial_binding(
     }
 
     bound_handler = MailerPlugin._send_email_tool_handler.__get__(plugin, MailerPlugin)
-    result = asyncio.run(bound_handler(event, payload))
+    result = run_async(bound_handler(event, payload))
 
     assert result == "ok"
     assert captured["event"] is event
