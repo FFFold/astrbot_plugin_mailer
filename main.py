@@ -121,8 +121,22 @@ class MailerPlugin(Star):
                 },
                 "required": ["to", "subject"],
             },
-            handler=self.send_email_tool,
+            handler=self._send_email_tool_handler,
         )
+
+    async def _send_email_tool_handler(
+        self,
+        event: AstrMessageEvent,
+        payload: dict[str, Any] | None = None,
+        **payload_kwargs: Any,
+    ) -> str:
+        merged_payload: dict[str, Any] = {}
+        if payload is not None:
+            if not isinstance(payload, dict):
+                raise ValueError("工具参数必须是对象。")
+            merged_payload.update(payload)
+        merged_payload.update(payload_kwargs)
+        return await self.send_email_tool(event, **merged_payload)
 
     def _smtp_settings(self) -> SMTPSettings:
         smtp_cfg = self._smtp_config()
@@ -290,6 +304,7 @@ class MailerPlugin(Star):
         self._check_file_limits(request)
         return await self._send_mail(request)
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("mail_test")
     async def mail_test(self, event: AstrMessageEvent, recipient: str = ""):
         """发送一封简单测试邮件，用于验证 SMTP 配置。
@@ -318,6 +333,7 @@ class MailerPlugin(Star):
             logger.exception("mail_test failed")
             yield event.plain_result(f"mail_test 失败: {exc}")
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("mail_config_check")
     async def mail_config_check(self, event: AstrMessageEvent):
         """检查当前插件 SMTP 配置。"""

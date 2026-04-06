@@ -1,13 +1,7 @@
 name: astrbot_plugin_mailer
 display_name: SMTP Mailer
-author: OpenCode
-description: Give LLMs a controlled SMTP email sending tool with HTML, inline images, and attachments.
+author: Fold
+description: 为语言模型提供一个受控的 SMTP 电子邮件发送工具，支持 HTML 格式、内嵌图片以及附件功能。
 version: 0.1.0
 homepage: https://github.com/example/astrbot_plugin_mailer
 astrbot_version: ">=4.5.7,<5"
-support_platforms:
-  - aiocqhttp
-  - qq_official
-  - telegram
-  - discord
-  - slack

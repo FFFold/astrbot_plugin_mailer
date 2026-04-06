@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,8 +32,18 @@ def _install_astrbot_stubs() -> None:
             self.__dict__.update(kwargs)
 
     class _Filter:
+        class PermissionType:
+            ADMIN = "admin"
+
         @staticmethod
         def command(_name):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        @staticmethod
+        def permission_type(_permission_type):
             def decorator(func):
                 return func
 
@@ -186,3 +197,27 @@ def test_smtp_settings_reject_tls_and_starttls_together(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="不能同时开启"):
         plugin._smtp_settings()
+
+
+def test_tool_handler_accepts_runtime_payload_dict(tmp_path: Path) -> None:
+    plugin = build_plugin(tmp_path)
+    captured = {}
+
+    async def fake_send_email_tool(event, **payload):
+        captured["event"] = event
+        captured["payload"] = payload
+        return "ok"
+
+    plugin.send_email_tool = fake_send_email_tool
+    event = SimpleNamespace(get_sender_id=lambda: "user-1")
+    payload = {
+        "to": ["alice@example.com"],
+        "subject": "Test",
+        "text_body": "Hello",
+    }
+
+    result = asyncio.run(plugin._send_email_tool_handler(event, payload))
+
+    assert result == "ok"
+    assert captured["event"] is event
+    assert captured["payload"] == payload
