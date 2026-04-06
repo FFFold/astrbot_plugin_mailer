@@ -1,0 +1,115 @@
+{
+  "smtp": {
+    "type": "object",
+    "description": "SMTP 发信配置。",
+    "items": {
+      "host": {
+        "type": "string",
+        "description": "SMTP 服务器地址。",
+        "default": ""
+      },
+      "port": {
+        "type": "int",
+        "description": "SMTP 服务器端口。",
+        "default": 465
+      },
+      "use_tls": {
+        "type": "bool",
+        "description": "是否使用隐式 TLS，常见于 465 端口。",
+        "default": true
+      },
+      "use_starttls": {
+        "type": "bool",
+        "description": "是否使用 STARTTLS，常见于 587 端口。",
+        "default": false
+      },
+      "username": {
+        "type": "string",
+        "description": "SMTP 用户名。",
+        "default": ""
+      },
+      "password": {
+        "type": "string",
+        "description": "SMTP 密码或邮箱授权码。",
+        "default": ""
+      },
+      "from_name": {
+        "type": "string",
+        "description": "发件人显示名称。",
+        "default": "AstrBot Mailer"
+      },
+      "from_email": {
+        "type": "string",
+        "description": "发件人邮箱地址。",
+        "default": ""
+      },
+      "default_reply_to": {
+        "type": "string",
+        "description": "默认 Reply-To 地址，可留空。",
+        "default": ""
+      },
+      "subject_prefix": {
+        "type": "string",
+        "description": "邮件主题统一前缀，可留空。",
+        "default": ""
+      }
+    }
+  },
+  "tool": {
+    "type": "object",
+    "description": "LLM 工具控制项。",
+    "items": {
+      "enable_llm_tool": {
+        "type": "bool",
+        "description": "是否向 LLM 暴露 send_email 工具。",
+        "default": true
+      },
+      "require_tool_confirmation": {
+        "type": "bool",
+        "description": "是否禁止直接工具发送，开启后将拒绝直接调用并提示走人工确认流程。",
+        "default": false
+      }
+    }
+  },
+  "security": {
+    "type": "object",
+    "description": "安全限制与风控配置。",
+    "items": {
+      "allowed_sender_ids": {
+        "type": "list",
+        "description": "允许触发邮件发送的 AstrBot 用户 ID 列表。为空表示不限制。",
+        "default": []
+      },
+      "allowed_domains": {
+        "type": "list",
+        "description": "允许发送的收件人域名白名单。为空表示不限制。",
+        "default": []
+      },
+      "blocked_domains": {
+        "type": "list",
+        "description": "禁止发送的收件人域名黑名单。",
+        "default": []
+      },
+      "allowed_attachment_roots": {
+        "type": "list",
+        "description": "允许作为附件和内嵌图片来源的绝对目录。为空时仅允许插件附件目录。",
+        "default": []
+      },
+      "max_attachment_size_mb": {
+        "type": "int",
+        "description": "单个附件允许的最大大小，单位 MB。",
+        "default": 10
+      },
+      "max_total_attachment_size_mb": {
+        "type": "int",
+        "description": "所有附件与内嵌图片总大小上限，单位 MB。",
+        "default": 25
+      },
+      "max_html_length": {
+        "type": "int",
+        "description": "HTML 正文允许的最大长度。",
+        "default": 200000
+      }
+    }
+  }
+}
