@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import mimetypes
 import re
 from email.headerregistry import Address
@@ -10,11 +11,18 @@ from pathlib import Path
 from .models import FileReference, InlineImageReference, MailRequest
 
 HTML_TAG_RE = re.compile(r"<[^>]+>")
+HTML_BREAK_RE = re.compile(r"<(?:br|/p|/div|/li|/tr|/h[1-6])\b[^>]*>", re.IGNORECASE)
+HTML_SCRIPT_STYLE_RE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL
+)
 WHITESPACE_RE = re.compile(r"\s+")
 
 
-def html_to_text(html: str) -> str:
-    text = HTML_TAG_RE.sub(" ", html)
+def html_to_text(html_content: str) -> str:
+    text = HTML_SCRIPT_STYLE_RE.sub(" ", html_content)
+    text = HTML_BREAK_RE.sub(" ", text)
+    text = HTML_TAG_RE.sub(" ", text)
+    text = html.unescape(text)
     return WHITESPACE_RE.sub(" ", text).strip()
 
 

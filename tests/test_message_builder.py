@@ -10,6 +10,15 @@ def test_html_to_text_strips_tags() -> None:
     assert html_to_text("<p>Hello <strong>world</strong></p>") == "Hello world"
 
 
+def test_html_to_text_ignores_script_and_unescapes_entities() -> None:
+    assert (
+        html_to_text(
+            "<style>.x{}</style><script>alert(1)</script><p>Hello&nbsp;world</p>"
+        )
+        == "Hello world"
+    )
+
+
 def test_build_message_adds_html_and_attachments(tmp_path: Path) -> None:
     attachment = tmp_path / "report.txt"
     attachment.write_text("report-body", encoding="utf-8")

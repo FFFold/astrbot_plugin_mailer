@@ -3,7 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from email.utils import parseaddr
 from pathlib import Path
+import re
 from typing import Any
+
+
+EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*$"
+)
+
+
+def _parse_email(address: str, field_name: str) -> str:
+    _, parsed = parseaddr(address)
+    if not parsed or not EMAIL_RE.fullmatch(parsed):
+        raise ValueError(f"Invalid email address in {field_name}: {address}")
+    return parsed
 
 
 def _normalize_email_list(value: Any, field_name: str) -> list[str]:
@@ -23,10 +36,7 @@ def _normalize_email_list(value: Any, field_name: str) -> list[str]:
         address = item.strip()
         if not address:
             continue
-        _, parsed = parseaddr(address)
-        if not parsed or "@" not in parsed:
-            raise ValueError(f"Invalid email address in {field_name}: {item}")
-        normalized.append(parsed)
+        normalized.append(_parse_email(address, field_name))
     return normalized
 
 
@@ -97,10 +107,7 @@ class MailRequest:
         if not isinstance(reply_to, str):
             raise ValueError("reply_to must be a string.")
         if reply_to:
-            _, parsed = parseaddr(reply_to)
-            if not parsed or "@" not in parsed:
-                raise ValueError("reply_to must be a valid email address.")
-            reply_to = parsed
+            reply_to = _parse_email(reply_to, "reply_to")
 
         attachments_payload = payload.get("attachments") or []
         inline_payload = payload.get("inline_images") or []

@@ -16,6 +16,12 @@
         "hint": "常见端口为 465（隐式 TLS）或 587（STARTTLS）。",
         "default": 465
       },
+      "timeout_seconds": {
+        "type": "float",
+        "description": "SMTP 超时时间（秒）",
+        "hint": "用于限制连接、认证和发送阶段的最长等待时间，避免网络异常导致长时间卡住。",
+        "default": 30
+      },
       "use_tls": {
         "type": "bool",
         "description": "启用隐式 TLS",

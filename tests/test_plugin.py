@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import sys
 from pathlib import Path
-from types import SimpleNamespace
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from astrbot_plugin_mailer.mailer.models import MailRequest
 
-
-def _install_astrbot_stubs() -> None:
-    if "astrbot.api" in sys.modules:
-        return
+def _install_astrbot_stubs() -> dict[str, ModuleType | None]:
+    originals = {
+        name: sys.modules.get(name)
+        for name in (
+            "astrbot",
+            "astrbot.api",
+            "astrbot.api.event",
+            "astrbot.api.star",
+        )
+    }
 
     astrbot_module = ModuleType("astrbot")
     api_module = ModuleType("astrbot.api")
@@ -73,11 +78,44 @@ def _install_astrbot_stubs() -> None:
     sys.modules["astrbot.api"] = api_module
     sys.modules["astrbot.api.event"] = event_module
     sys.modules["astrbot.api.star"] = star_module
+    return originals
 
 
-_install_astrbot_stubs()
+def _restore_astrbot_stubs(originals: dict[str, ModuleType | None]) -> None:
+    for name, module in originals.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
 
-from astrbot_plugin_mailer.main import MailerPlugin
+
+@pytest.fixture
+def plugin_symbols():
+    originals = _install_astrbot_stubs()
+    try:
+        main_module = importlib.import_module("astrbot_plugin_mailer.main")
+        models_module = importlib.import_module("astrbot_plugin_mailer.mailer.models")
+        yield {
+            "MailerPlugin": main_module.MailerPlugin,
+            "MailRequest": models_module.MailRequest,
+        }
+    finally:
+        for module_name in (
+            "astrbot_plugin_mailer.main",
+            "astrbot_plugin_mailer.mailer.models",
+        ):
+            sys.modules.pop(module_name, None)
+        _restore_astrbot_stubs(originals)
+
+
+@pytest.fixture
+def MailerPlugin(plugin_symbols):
+    return plugin_symbols["MailerPlugin"]
+
+
+@pytest.fixture
+def MailRequest(plugin_symbols):
+    return plugin_symbols["MailRequest"]
 
 
 class DummyContext:
@@ -88,11 +126,12 @@ class DummyContext:
         self.tools.extend(tools)
 
 
-def build_plugin(tmp_path: Path, **overrides) -> MailerPlugin:
+def build_plugin(mailer_plugin_cls, tmp_path: Path, **overrides):
     config = {
         "smtp": {
             "host": "smtp.example.com",
             "port": 465,
+            "timeout_seconds": 30,
             "use_tls": True,
             "use_starttls": False,
             "username": "bot@example.com",
@@ -123,7 +162,7 @@ def build_plugin(tmp_path: Path, **overrides) -> MailerPlugin:
         else:
             config[key] = value
 
-    plugin = MailerPlugin.__new__(MailerPlugin)
+    plugin = mailer_plugin_cls.__new__(mailer_plugin_cls)
     plugin.context = DummyContext()
     plugin.config = config
     plugin.data_dir = tmp_path
@@ -131,8 +170,14 @@ def build_plugin(tmp_path: Path, **overrides) -> MailerPlugin:
     return plugin
 
 
-def test_recipient_policy_blocks_disallowed_domains(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path, security={"allowed_domains": ["example.com"]})
+def test_recipient_policy_blocks_disallowed_domains(
+    tmp_path: Path, MailerPlugin, MailRequest
+) -> None:
+    plugin = build_plugin(
+        MailerPlugin,
+        tmp_path,
+        security={"allowed_domains": ["example.com"]},
+    )
     request = MailRequest.from_payload(
         {
             "to": ["alice@other.com"],
@@ -145,8 +190,10 @@ def test_recipient_policy_blocks_disallowed_domains(tmp_path: Path) -> None:
         plugin._check_recipient_policy(request)
 
 
-def test_file_limits_resolve_paths_inside_allowed_roots(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path)
+def test_file_limits_resolve_paths_inside_allowed_roots(
+    tmp_path: Path, MailerPlugin, MailRequest
+) -> None:
+    plugin = build_plugin(MailerPlugin, tmp_path)
     attachment = tmp_path / "safe.txt"
     attachment.write_text("payload", encoding="utf-8")
     request = MailRequest.from_payload(
@@ -162,8 +209,10 @@ def test_file_limits_resolve_paths_inside_allowed_roots(tmp_path: Path) -> None:
     assert request.attachments[0].path == attachment.resolve()
 
 
-def test_file_limits_reject_paths_outside_allowed_roots(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path)
+def test_file_limits_reject_paths_outside_allowed_roots(
+    tmp_path: Path, MailerPlugin, MailRequest
+) -> None:
+    plugin = build_plugin(MailerPlugin, tmp_path)
     outside = tmp_path.parent / "outside.txt"
     outside.write_text("payload", encoding="utf-8")
     request = MailRequest.from_payload(
@@ -179,8 +228,11 @@ def test_file_limits_reject_paths_outside_allowed_roots(tmp_path: Path) -> None:
         plugin._check_file_limits(request)
 
 
-def test_file_limits_allow_any_path_when_unsafe_switch_enabled(tmp_path: Path) -> None:
+def test_file_limits_allow_any_path_when_unsafe_switch_enabled(
+    tmp_path: Path, MailerPlugin, MailRequest
+) -> None:
     plugin = build_plugin(
+        MailerPlugin,
         tmp_path,
         security={"allow_unsafe_all_attachment_paths": True},
     )
@@ -199,16 +251,23 @@ def test_file_limits_allow_any_path_when_unsafe_switch_enabled(tmp_path: Path) -
     assert request.attachments[0].path == outside.resolve()
 
 
-def test_sender_allowlist_blocks_unknown_sender(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path, security={"allowed_sender_ids": ["user-1"]})
+def test_sender_allowlist_blocks_unknown_sender(tmp_path: Path, MailerPlugin) -> None:
+    plugin = build_plugin(
+        MailerPlugin,
+        tmp_path,
+        security={"allowed_sender_ids": ["user-1"]},
+    )
     event = SimpleNamespace(get_sender_id=lambda: "user-2")
 
     with pytest.raises(PermissionError, match="没有权限"):
         plugin._check_sender_allowed(event)
 
 
-def test_smtp_settings_reject_tls_and_starttls_together(tmp_path: Path) -> None:
+def test_smtp_settings_reject_tls_and_starttls_together(
+    tmp_path: Path, MailerPlugin
+) -> None:
     plugin = build_plugin(
+        MailerPlugin,
         tmp_path,
         smtp={
             "use_tls": True,
@@ -220,8 +279,17 @@ def test_smtp_settings_reject_tls_and_starttls_together(tmp_path: Path) -> None:
         plugin._smtp_settings()
 
 
-def test_tool_handler_accepts_runtime_payload_dict(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path)
+def test_smtp_settings_reject_invalid_port(tmp_path: Path, MailerPlugin) -> None:
+    plugin = build_plugin(MailerPlugin, tmp_path, smtp={"port": 70000})
+
+    with pytest.raises(ValueError, match="1 到 65535"):
+        plugin._smtp_settings()
+
+
+def test_tool_handler_accepts_runtime_payload_dict(
+    tmp_path: Path, MailerPlugin
+) -> None:
+    plugin = build_plugin(MailerPlugin, tmp_path)
     captured = {}
 
     async def fake_send_email_tool(event, **payload):
@@ -244,8 +312,10 @@ def test_tool_handler_accepts_runtime_payload_dict(tmp_path: Path) -> None:
     assert captured["payload"] == payload
 
 
-def test_tool_handler_works_after_star_manager_partial_binding(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path)
+def test_tool_handler_works_after_star_manager_partial_binding(
+    tmp_path: Path, MailerPlugin
+) -> None:
+    plugin = build_plugin(MailerPlugin, tmp_path)
     captured = {}
 
     async def fake_send_email_tool(event, **payload):
@@ -269,9 +339,11 @@ def test_tool_handler_works_after_star_manager_partial_binding(tmp_path: Path) -
     assert captured["payload"] == payload
 
 
-def test_tool_description_encourages_html_email(tmp_path: Path) -> None:
-    plugin = build_plugin(tmp_path)
+def test_tool_description_encourages_html_email(tmp_path: Path, MailerPlugin) -> None:
+    plugin = build_plugin(MailerPlugin, tmp_path)
     tool = plugin._build_send_email_tool()
 
     assert "优先使用 html_body" in tool.description
     assert "inline_images" in tool.description
+    assert {"required": ["text_body"]} in tool.parameters["anyOf"]
+    assert {"required": ["html_body"]} in tool.parameters["anyOf"]

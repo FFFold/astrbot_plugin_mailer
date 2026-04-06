@@ -121,6 +121,10 @@ class MailerPlugin(Star):
                     },
                 },
                 "required": ["to", "subject"],
+                "anyOf": [
+                    {"required": ["text_body"]},
+                    {"required": ["html_body"]},
+                ],
             },
             handler=MailerPlugin._send_email_tool_handler,
         )
@@ -147,6 +151,8 @@ class MailerPlugin(Star):
         from_email = str(smtp_cfg.get("from_email", "")).strip()
         use_tls = bool(smtp_cfg.get("use_tls", True))
         use_starttls = bool(smtp_cfg.get("use_starttls", False))
+        timeout_seconds = float(smtp_cfg.get("timeout_seconds", 30))
+        port = int(smtp_cfg.get("port", 465))
 
         missing = [
             name
@@ -160,14 +166,19 @@ class MailerPlugin(Star):
             raise ValueError(f"缺少必要 SMTP 配置项: {', '.join(missing)}")
         if use_tls and use_starttls:
             raise ValueError("smtp.use_tls 和 smtp.use_starttls 不能同时开启。")
+        if not 1 <= port <= 65535:
+            raise ValueError("smtp.port 必须在 1 到 65535 之间。")
+        if timeout_seconds <= 0:
+            raise ValueError("smtp.timeout_seconds 必须大于 0。")
 
         return SMTPSettings(
             host=host,
-            port=int(smtp_cfg.get("port", 465)),
+            port=port,
             username=username,
             password=password,
             use_tls=use_tls,
             use_starttls=use_starttls,
+            timeout_seconds=timeout_seconds,
         )
 
     def _check_sender_allowed(self, event: AstrMessageEvent) -> None:
@@ -353,7 +364,8 @@ class MailerPlugin(Star):
             roots = ", ".join(str(path) for path in self._allowed_roots())
             yield event.plain_result(
                 "邮件插件配置校验通过。"
-                f" SMTP: {settings.host}:{settings.port}，发件人: {from_email}，允许目录: {roots}"
+                f" SMTP: {settings.host}:{settings.port}，发件人: {from_email}，允许目录数量: {len(self._allowed_roots())}，"
+                f" 任意路径开关: {'开启' if self._security_config().get('allow_unsafe_all_attachment_paths', False) else '关闭'}"
             )
         except Exception as exc:
             yield event.plain_result(f"邮件插件配置无效: {exc}")

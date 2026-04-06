@@ -15,6 +15,7 @@ class SMTPSettings:
     password: str
     use_tls: bool
     use_starttls: bool
+    timeout_seconds: float
 
 
 async def send_message(
@@ -33,6 +34,7 @@ async def send_message(
         recipients=recipients,
         use_tls=settings.use_tls,
         start_tls=settings.use_starttls,
+        timeout=settings.timeout_seconds,
     )
     status_code, status_message = response
     return str(status_code), _normalize_status_message(status_message)
