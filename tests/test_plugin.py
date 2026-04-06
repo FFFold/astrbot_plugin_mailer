@@ -221,3 +221,28 @@ def test_tool_handler_accepts_runtime_payload_dict(tmp_path: Path) -> None:
     assert result == "ok"
     assert captured["event"] is event
     assert captured["payload"] == payload
+
+
+def test_tool_handler_works_after_star_manager_partial_binding(tmp_path: Path) -> None:
+    plugin = build_plugin(tmp_path)
+    captured = {}
+
+    async def fake_send_email_tool(event, **payload):
+        captured["event"] = event
+        captured["payload"] = payload
+        return "ok"
+
+    plugin.send_email_tool = fake_send_email_tool
+    event = SimpleNamespace(get_sender_id=lambda: "user-1")
+    payload = {
+        "to": ["alice@example.com"],
+        "subject": "Test",
+        "text_body": "Hello",
+    }
+
+    bound_handler = MailerPlugin._send_email_tool_handler.__get__(plugin, MailerPlugin)
+    result = asyncio.run(bound_handler(event, payload))
+
+    assert result == "ok"
+    assert captured["event"] is event
+    assert captured["payload"] == payload

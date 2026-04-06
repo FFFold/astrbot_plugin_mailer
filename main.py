@@ -121,7 +121,7 @@ class MailerPlugin(Star):
                 },
                 "required": ["to", "subject"],
             },
-            handler=self._send_email_tool_handler,
+            handler=MailerPlugin._send_email_tool_handler,
         )
 
     async def _send_email_tool_handler(
