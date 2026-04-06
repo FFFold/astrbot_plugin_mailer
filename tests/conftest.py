@@ -18,8 +18,13 @@ def _find_workspace_root(start: Path) -> Path:
 
 
 WORKSPACE_ROOT = _find_workspace_root(PLUGIN_ROOT)
+ORIGINAL_SYS_PATH = list(sys.path)
 
 for path in (WORKSPACE_ROOT, PARENT_ROOT):
     path_str = str(path)
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    sys.path[:] = ORIGINAL_SYS_PATH

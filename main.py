@@ -271,7 +271,6 @@ class MailerPlugin(Star):
         return deduped
 
     def _resolve_safe_path(self, raw_path: Path) -> Path:
-        security_cfg = self._security_config()
         path = raw_path
         if not path.is_absolute():
             path = self.attachments_dir / path
