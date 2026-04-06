@@ -61,6 +61,25 @@ class MailerPlugin(Star):
                 normalized.append(text)
         return normalized
 
+    def _get_sender_id_allowlist(self) -> list[str]:
+        security_cfg = self._security_config()
+        value = security_cfg.get("allowed_sender_ids", [])
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("security.allowed_sender_ids 必须是列表。")
+
+        normalized: list[str] = []
+        for item in value:
+            if isinstance(item, (list, dict, set, tuple)):
+                raise ValueError(
+                    "security.allowed_sender_ids 只能包含可转换为字符串的标量值。"
+                )
+            text = str(item).strip()
+            if text:
+                normalized.append(text)
+        return normalized
+
     def _smtp_config(self) -> dict[str, Any]:
         return self._group("smtp")
 
@@ -215,9 +234,7 @@ class MailerPlugin(Star):
         )
 
     def _check_sender_allowed(self, event: AstrMessageEvent) -> None:
-        allowed_sender_ids = self._get_list_of_strings(
-            "security", "allowed_sender_ids", []
-        )
+        allowed_sender_ids = self._get_sender_id_allowlist()
         if allowed_sender_ids and str(event.get_sender_id()) not in allowed_sender_ids:
             raise PermissionError("当前发送者没有权限使用邮件发送功能。")
 

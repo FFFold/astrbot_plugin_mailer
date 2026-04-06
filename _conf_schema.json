@@ -99,7 +99,7 @@
       "allowed_sender_ids": {
         "type": "list",
         "description": "允许调用的用户 ID 列表",
-        "hint": "为空表示不限制。建议在生产环境中仅放行管理员或可信用户。",
+        "hint": "为空表示不限制。应填写类似 1871234567 这样的平台用户 ID。建议在生产环境中仅放行管理员或可信用户。",
         "default": []
       },
       "allowed_domains": {

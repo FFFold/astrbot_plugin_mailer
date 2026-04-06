@@ -271,6 +271,17 @@ def test_sender_allowlist_blocks_unknown_sender(tmp_path: Path, MailerPlugin) ->
         plugin._check_sender_allowed(event)
 
 
+def test_sender_allowlist_accepts_numeric_ids(tmp_path: Path, MailerPlugin) -> None:
+    plugin = build_plugin(
+        MailerPlugin,
+        tmp_path,
+        security={"allowed_sender_ids": [12345678]},
+    )
+    event = SimpleNamespace(get_sender_id=lambda: "12345678")
+
+    plugin._check_sender_allowed(event)
+
+
 def test_smtp_settings_reject_tls_and_starttls_together(
     tmp_path: Path, MailerPlugin
 ) -> None:
