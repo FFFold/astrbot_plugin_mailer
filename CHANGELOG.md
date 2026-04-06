@@ -17,6 +17,7 @@
 ### Fixed
 
 - 修复 `FunctionTool.handler` 在 AstrBot 运行时下的绑定方式，解决 LLM 调用时的参数错位问题
+- 修复 `send_email` 工具参数 schema 在部分 OpenAI 兼容提供方下因顶层 `anyOf` 不受支持而导致的 400 请求错误
 - 修复 LLM 工具路径与管理命令路径在内容限制校验上的不一致问题
 - 修复 SMTP 发送结果格式化异常，避免返回冗余的 `{}` 等无意义状态文本
 - 修复 `mail_config_check` 泄露完整本地绝对路径的问题，改为最小化信息输出

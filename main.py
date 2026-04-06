@@ -121,11 +121,11 @@ class MailerPlugin(Star):
                     },
                     "text_body": {
                         "type": "string",
-                        "description": "纯文本正文。",
+                        "description": "纯文本正文。text_body 和 html_body 至少提供一个；如果未明确要求纯文本，优先使用 html_body。",
                     },
                     "html_body": {
                         "type": "string",
-                        "description": "可选的 HTML 正文。",
+                        "description": "可选的 HTML 正文。text_body 和 html_body 至少提供一个；需要富文本排版或内嵌图片时优先使用 html_body。",
                     },
                     "reply_to": {
                         "type": "string",
@@ -173,10 +173,6 @@ class MailerPlugin(Star):
                     },
                 },
                 "required": ["to", "subject"],
-                "anyOf": [
-                    {"required": ["text_body"]},
-                    {"required": ["html_body"]},
-                ],
             },
             handler=MailerPlugin._send_email_tool_handler,
         )

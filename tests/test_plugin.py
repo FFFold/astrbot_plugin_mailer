@@ -418,5 +418,8 @@ def test_tool_description_encourages_html_email(tmp_path: Path, MailerPlugin) ->
 
     assert "优先使用 html_body" in tool.description
     assert "inline_images" in tool.description
-    assert {"required": ["text_body"]} in tool.parameters["anyOf"]
-    assert {"required": ["html_body"]} in tool.parameters["anyOf"]
+    assert "至少提供一个" in tool.parameters["properties"]["text_body"]["description"]
+    assert (
+        "优先使用 html_body"
+        in tool.parameters["properties"]["html_body"]["description"]
+    )
