@@ -86,7 +86,7 @@
       "require_tool_confirmation": {
         "type": "bool",
         "description": "要求人工确认后再发送",
-        "hint": "开启后，LLM 直接调用工具会被拒绝，待后续接入人工审核或确认流程。",
+        "hint": "【开发中】开启后，LLM 直接调用工具会被拒绝，待后续开发接入人工审核或确认流程。",
         "default": false
       }
     }

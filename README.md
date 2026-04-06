@@ -72,7 +72,7 @@ AstrBot 会根据 `requirements.txt` 安装运行时依赖：
 ### 2. `tool` 工具控制
 
 - `enable_llm_tool`：是否向 LLM 暴露 `send_email` 工具
-- `require_tool_confirmation`：是否禁止直接工具发送，开启后工具会拒绝直接发信，适合后续接入人工确认流程
+- `require_tool_confirmation`：【开发中】开启后，LLM 直接调用工具会被拒绝，待后续开发接入人工审核或确认流程。
 
 ### 3. `security` 安全控制
 
